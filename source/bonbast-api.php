@@ -114,52 +114,66 @@ class BonBast
   /**
    * Send HTTP Request to fetch prices via bonbast.com API
    */
-  private function requestFetchPrices($key)
-  {
-    /**
-     * Request to get prices
-     */
+private function requestFetchPrices($key)
+{
+    // Initialize cURL session
     $curl = curl_init();
+
+    // Set cURL options
     curl_setopt_array($curl, [
-      CURLOPT_CUSTOMREQUEST => "POST",
-      CURLOPT_RETURNTRANSFER => true, // return body
-      CURLOPT_HEADER => true, // return status code
-      CURLOPT_URL => $this->baseURI . "/json",
-      CURLOPT_SSL_VERIFYHOST => false,
-      CURLOPT_SSL_VERIFYPEER => false,
-      CURLOPT_TIMEOUT => 0,
-      CURLOPT_POSTFIELDS => "param=" . $key,
-      CURLOPT_HTTPHEADER => [
-        "user-agent: " . $this->user_agent,
-        "content-type: application/x-www-form-urlencoded; charset=UTF-8",
-        "referer: " . $this->baseURI . "/",
-        "Cookie: st_bb=0",
-      ],
+        CURLOPT_CUSTOMREQUEST => "POST",
+        CURLOPT_RETURNTRANSFER => true, // Return the response as a string
+        CURLOPT_HEADER => true,         // Include headers in the output
+        CURLOPT_URL => $this->baseURI . "/json",
+        CURLOPT_SSL_VERIFYHOST => false,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_TIMEOUT => 0,
+        CURLOPT_POSTFIELDS => "param=" . $key, // Send the API key in POST
+        CURLOPT_HTTPHEADER => [
+            "user-agent: " . $this->user_agent,
+            "content-type: application/x-www-form-urlencoded; charset=UTF-8",
+            "referer: " . $this->baseURI . "/",
+            "Cookie: st_bb=0",
+        ],
     ]);
+
+    // Execute cURL request
     $response = curl_exec($curl);
+
+    // Added check: If curl_exec fails, throw exception with actual error
+    if ($response === false) {
+        throw new Exception("cURL Error: " . curl_error($curl));
+    }
+
+    // Get HTTP status code from the response
     $HTTPCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+
+    // IMPORTANT CHANGE: Get header size BEFORE closing cURL
+    // Previously, curl_getinfo was called AFTER curl_close, which caused the "invalid cURL handle" error
+    $header_size = curl_getinfo($curl, CURLINFO_HEADER_SIZE);
+
+    // Close cURL session
     curl_close($curl);
 
+    // Validate the HTTP status code
     $this->validateHTTPStatusCode($HTTPCode);
 
-    // Then, after your curl_exec call:
-    $body = substr($response, curl_getinfo($curl, CURLINFO_HEADER_SIZE));
+    // Extract the response body (skip headers)
+    $body = substr($response, $header_size);
 
-    // JSON decode response body
+    // Decode JSON response
     $json_object = @json_decode($body, true);
 
-    /**
-     * Check if the decoded JSON is empty
-     */
-    if ($json_object === null) throw new Exception("Couldn't decode JSON response");
+    // Added check: If JSON decode fails, throw exception with actual body for easier debugging
+    if ($json_object === null) {
+        throw new Exception("Couldn't decode JSON response: " . $body);
+    }
 
-    /**
-     * If decoded JSON has "reset" field inside, means API request has failed.
-     */
+    // If the API returns "reset" field, it means the key is invalid
     if (isset($json_object["reset"])) throw new InvalidApiKeyException();
 
     return $json_object;
-  }
+}
 
   private function mapResponse($json_object)
   {
